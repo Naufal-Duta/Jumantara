@@ -1,0 +1,13 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "assets/fonts/Laila-Regular.ttf",
+      "sha1": "fab8dcdeacb178dd7a1eccc76768bd810b7d5f1d"
+    },
+    {
+      "path": "assets/fonts/Laila-SemiBold.ttf",
+      "sha1": "960988f7ded06a8580ed5b87543356c76eb5eeaa"
+    }
+  ]
+}
