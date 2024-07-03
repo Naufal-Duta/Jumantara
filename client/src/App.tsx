@@ -1,8 +1,9 @@
 import { View, Text, ScrollView, StyleSheet, Touchable, TouchableOpacity, Image, Dimensions } from 'react-native'
 import React, { useEffect, useState } from 'react'
-import { IconSearch, IconMenu } from './assets'
+import { IconSearch, IconMenu } from '../assets'
 import FastImage from 'react-native-fast-image'
 import { setCustomText } from 'react-native-global-props';
+import { ProgressBar } from '@react-native-community/progress-bar-android';
 
 const { width } = Dimensions.get('window');
 
@@ -19,11 +20,45 @@ const Home = () => {
   const [current, setCurrent] = useState([]);
   const [location, setLocation] = useState([]);
   const [forecast, setForecast] = useState([]);
+  const [localtime, setLocalTime] = useState('');
+  const [aqi, setAqi] = useState(0);
+  const [aqiBar, setAqiBar] = useState(0);
+  const [aqiStatus, setAqiStatus] = useState(['']);
   const [loading, isLoading] = useState(true);
+  const [hourly, setHourly] = useState([])
+
+  const calculateAQI = async () => {
+    let Ihigh, Ilow, Chigh, Clow, status, color;
+    const pm25 = 55
+    if (pm25 >= 0 && pm25 <= 12.0) {
+        Ilow = 0; Ihigh = 50; Clow = 0; Chigh = 12.0; status="Good"; color="green";
+    } else if (pm25 >= 12.1 && pm25 <= 35.4) {
+        Ilow = 51; Ihigh = 100; Clow = 12.1; Chigh = 35.4; status="Moderate"; color="yellow";
+    } else if (pm25 >= 35.5 && pm25 <= 55.4) {
+        Ilow = 101; Ihigh = 150; Clow = 35.5; Chigh = 55.4; status="Unhealty For Sensitive Groups"; color="#ed7a00";
+    } else if (pm25 >= 55.5 && pm25 <= 150.4) {
+        Ilow = 151; Ihigh = 200; Clow = 55.5; Chigh = 150.4; status="Unhealthy"; color="#b22222";
+    } else if (pm25 >= 150.5 && pm25 <= 250.4) {
+        Ilow = 201; Ihigh = 300; Clow = 150.5; Chigh = 250.4; status="Very Unhealthy"; color="#69359c";
+    } else if (pm25 >= 250.5 && pm25 <= 500.4) {
+        Ilow = 301; Ihigh = 500; Clow = 250.5; Chigh = 500.4; status="Hazardous"; color="#50404d";
+    } else {
+        return 'Invalid PM2.5 value';
+    }
+
+
+    const aqi = ((Ihigh - Ilow) / (Chigh - Clow)) * (pm25 - Clow) + Ilow;
+    const result = Math.round(aqi);
+    const percentage = ((result / (500 / 100)) / 100 )
+    setAqi(result)
+    setAqiStatus([status, color]);
+    setAqiBar(percentage)
+};
+
   const getWeatherInfo = async () => {
     try {
       const response = await fetch(
-        `http://api.weatherapi.com/v1/forecast.json?key=63065a5ed1bd4b09856193114242406&q=Jakarta&days=3&aqi=no&alerts=no`,
+        `http://api.weatherapi.com/v1/forecast.json?key=63065a5ed1bd4b09856193114242406&q=New_york&days=3&aqi=yes&alerts=no`,
         {
           method: 'GET',
           headers: {
@@ -36,29 +71,49 @@ const Home = () => {
         // console.log(data)
         setCurrent(data.current);
         setLocation(data.location);
-        setForecast(data.forecast.forecastday)
-        isLoading(false)
+        setForecast(data.forecast.forecastday);
       } else {
-
+        console.error('Response not OK', response.statusText);
       }
 
     } catch (error) {
-
-      return
-
+      console.error('Fetch error:', error);
     }
   };
 
+  const getLocalTime = async () => {
+    const date = location.localtime;
+    const timePart = date.split(' ')[1];
+    setLocalTime(timePart);
+  }
+
+  const getHourlyData = async () => {
+    let hourlyData = [];
+    const data = forecast[0].hour;
+    for (let i = 0; i < data.length; i++) {
+      let time = data[i].time.split(' ')[1];
+      hourlyData.push(time)
+    }
+    setHourly(hourlyData);
+  }
+
   useEffect(() => {
-    getWeatherInfo();
-    console.log(forecast);
-  }, [])
+    const fetchData = async () => {
+      isLoading(true);
+      await getWeatherInfo();
+      await getLocalTime();
+      await getHourlyData();
+      await calculateAQI();
+      isLoading(false);
+    };
+    fetchData();
+  }, []);
 
   return (
     <View style={styles.main}>
       {loading ? (
         <FastImage
-          source={require("./assets/images/loading.gif")}
+          source={require("../assets/images/loading.gif")}
           style={{ width: 200, height: 200 }}
         />
       ) : (
@@ -85,14 +140,14 @@ const Home = () => {
           <View>
             <View style={styles.content}>
               <FastImage
-                source={require("./assets/images/clear.gif")}
+                source={require("../assets/images/clear.gif")}
                 style={styles.contentGif}
               />
             </View>
 
             <View style={{ flexWrap: "wrap" }}>
               <View style={{ flexWrap: "wrap" }}>
-                <Text style={{ fontSize: 70, fontFamily: "Laila-SemiBold", color: "white", borderBottomWidth: 1, borderColor: "lightgrey" }}>
+                <Text style={{ fontSize: 64, fontFamily: "Laila-SemiBold", color: "white", borderBottomWidth: 1, borderColor: "lightgrey" }}>
                   {current.temp_c}°
                 </Text>
               </View>
@@ -145,12 +200,12 @@ const Home = () => {
                   <View style={{ alignItems: "center" }}>
                     <FastImage
                       source={{ uri: `https:${forecast[0].day.condition.icon}` }}
-                      style={{ width: 45, height: 45 }}
+                      style={styles.smallIcon}
                     />
                   </View>
                   <View style={{ alignItems: "center" }}>
                     <Text style={[customTextProps.style, { fontSize: 11 }]}>
-                    {forecast[0].day.avgtemp_c}°
+                      {forecast[0].day.avgtemp_c}°
                     </Text>
                     <Text style={[customTextProps.style, { fontSize: 8 }]}>
                       {forecast[0].day.condition.text}
@@ -167,7 +222,7 @@ const Home = () => {
                   </View>
                   <View style={{ alignItems: "center" }}>
                     <Text style={[customTextProps.style, { fontSize: 11 }]}>
-                    {forecast[1].day.avgtemp_c}°
+                      {forecast[1].day.avgtemp_c}°
                     </Text>
                     <Text style={[customTextProps.style, { fontSize: 8 }]}>
                       {forecast[1].day.condition.text}
@@ -184,7 +239,7 @@ const Home = () => {
                   </View>
                   <View style={{ alignItems: "center" }}>
                     <Text style={[customTextProps.style, { fontSize: 11 }]}>
-                    {forecast[2].day.avgtemp_c}°
+                      {forecast[2].day.avgtemp_c}°
                     </Text>
                     <Text style={[customTextProps.style, { fontSize: 8 }]}>
                       {forecast[2].day.condition.text}
@@ -199,38 +254,108 @@ const Home = () => {
           </View>
           {/* 2nd section */}
 
-          <View style={{ flexDirection: "row", justifyContent: "space-between", borderRadius: 15, alignItems: "center", backgroundColor: "#268696", marginTop: 20 }}>
-            <View style={{ alignItems: "center", flex: 0.3, borderRadius: 15 }}>
+          {/* 3rd section */}
+          <View style={{ borderRadius: 15, backgroundColor: "#268696", marginTop: 20 }}>
+            <View style={{ padding: 15 }}>
               <Text>
-                {current.humidity}%
+                Air Quality
               </Text>
-              <Text>
-                Humidity
-              </Text>
-            </View>
-            <View style={{ alignItems: "center", flex: 0.3, borderRadius: 15 }}>
-              <Text>
-                {current.uv}.0
-              </Text>
-              <Text>
-                UV
-              </Text>
-            </View>
-            <View style={{ alignItems: "center", flex: 0.3, borderRadius: 15 }}>
-              <Text>
-                u
-              </Text>
-              <Image source={require("./assets/icons/garis.png")}
-
-              />
-              <Text>
-                {current.wind_kph} kph
-              </Text>
-              <Text>
-                Wind
-              </Text>
+              <View>
+                <Text>
+                  {aqiStatus[0]} {aqi}
+                </Text>
+                <ProgressBar
+                  styleAttr="Horizontal"
+                  indeterminate={false}
+                  progress={aqiBar}
+                  color={aqiStatus[1]}
+                />
+              </View>
             </View>
           </View>
+
+          <View style={{ marginTop: 20 }}>
+            <View style={{ flexDirection: "row", justifyContent: 'space-between', marginBottom: 10 }}>
+              <View style={styles.thirdContainer}>
+                <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                  Feels like
+                </Text>
+                <Text>
+                  {current.feelslike_c}°
+                </Text>
+              </View>
+              <View style={styles.thirdContainer}>
+                <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                  UV
+                </Text>
+                <Text>
+                  {current.uv}
+                </Text>
+              </View>
+              <View style={styles.thirdContainer}>
+                <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                  Wind
+                </Text>
+                <Text>
+                  {current.wind_kph} kph
+                </Text>
+              </View>
+            </View>
+            <View style={{ flexDirection: "row", justifyContent: 'space-between' }}>
+              <View style={styles.thirdContainer}>
+                <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                  Humidity
+                </Text>
+                <Text>
+                  {current.humidity}%
+                </Text>
+              </View>
+              <View style={styles.thirdContainer}>
+                <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                  Air Pressure
+                </Text>
+                <Text>
+                  {current.pressure_mb}
+                </Text>
+              </View>
+              <View style={styles.thirdContainer}>
+                <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                  Visibility
+                </Text>
+                <Text>
+                  {current.vis_km} km
+                </Text>
+              </View>
+            </View>
+          </View>
+          {/* 3rd section */}
+
+          {/* 4rd section */}
+          <View style={{ borderRadius: 15, backgroundColor: "#268696", marginTop: 20 }}>
+            <ScrollView horizontal={true} showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                {forecast[0].hour
+                  .map((hour, index) => {
+                    return (
+                      <View style={{ flex: 0.3, padding: 15, alignItems: 'center' }} key={index}>
+                        <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 13 }}>
+                          {hourly[index]}
+                        </Text>
+                        <FastImage
+                          source={{ uri: `https:${hour.condition.icon}` }}
+                          style={{ width: 35, height: 35 }}
+                        />
+                        <Text style={[customTextProps.style, { marginLeft: 8 }]}>
+                          {hour.temp_c}°
+                        </Text>
+                      </View>
+                    )
+                  })}
+              </View>
+            </ScrollView>
+          </View>
+          {/* 4rd section */}
+
 
           {/* content */}
         </ScrollView>
@@ -247,8 +372,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#117A8E",
     alignItems: "center",
     justifyContent: "center",
-    padding: 30,
-    borderWidth: 1
+    padding: 30
   },
   container: {
 
@@ -287,6 +411,16 @@ const styles = StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     marginRight: 10
+  },
+  smallIcon: {
+    width: 45,
+    height: 45
+  },
+  thirdContainer: {
+    flex: 0.3,
+    borderRadius: 15,
+    padding: 15,
+    backgroundColor: "#268696",
   }
 })
 
