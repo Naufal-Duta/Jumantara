@@ -8,13 +8,17 @@ import {
   Image,
   Dimensions,
   DrawerLayoutAndroid,
-  Button
+  Button,
+  PermissionsAndroid,
+  Platform,
+  TextInput
 } from 'react-native'
 import React, { useEffect, useRef, useState } from 'react'
-import { IconSearch, IconMenu } from '../assets'
+import { IconSearch, IconMenu, IconBack, IconEdit } from '../assets'
 import FastImage from 'react-native-fast-image'
 import { setCustomText } from 'react-native-global-props';
 import { ProgressBar } from '@react-native-community/progress-bar-android';
+import Geolocation from 'react-native-geolocation-service';
 
 const { width } = Dimensions.get('window');
 
@@ -28,15 +32,18 @@ const customTextProps = {
 setCustomText(customTextProps);
 
 const Home = () => {
+  const [search, setSearch] = useState('')
   const [current, setCurrent] = useState([]);
   const [location, setLocation] = useState([]);
   const [forecast, setForecast] = useState([]);
   const [localtime, setLocalTime] = useState('');
+  const [listcity, setListCity] = useState([]);
   const [aqi, setAqi] = useState(0);
   const [aqiBar, setAqiBar] = useState(0);
   const [aqiStatus, setAqiStatus] = useState(['']);
   const [loading, isLoading] = useState(true);
   const [hourly, setHourly] = useState([]);
+  const [gps, setGps] = useState(null);
   const drawer = useRef<DrawerLayoutAndroid>(null);
 
   const calculateAQI = async () => {
@@ -66,72 +73,148 @@ const Home = () => {
     setAqiBar(percentage)
   };
 
+  const searchCity = async (search = '') => {
+    try {
+      const response = await fetch(
+        `http://api.weatherapi.com/v1/search.json?key=63065a5ed1bd4b09856193114242406&q=${search}`,
+        {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      );
+      const data = await response.json();
+      setListCity(data)
+      console.log(data)
+    } catch (error) {
+
+    }
+  }
+
+  const requestLocationPermission = async () => {
+    if (Platform.OS === 'android') {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        {
+          title: 'Location Access Required',
+          message: 'This App needs to Access your location',
+        }
+      );
+      if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+        getLocation();
+      } else {
+        console.log('Permission Denied');
+      }
+    } else {
+      getLocation();
+    }
+  };
+
+  const getLocation = () => {
+    Geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setGps({ latitude, longitude });
+        // Use latitude and longitude to get city name
+        getCityName(latitude, longitude);
+      },
+      (error) => {
+        console.error(error);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+    );
+  };
+
+  const getCityName = async (latitude, longitude) => {
+    try {
+      const response = await fetch(
+        `https://maps.googleapis.com/maps/api/geocode/json?latlng=${latitude},${longitude}&key=YOUR_GOOGLE_API_KEY`
+      );
+      const data = await response.json();
+      const city = data.results[0].address_components.find(component =>
+        component.types.includes('locality')
+      ).long_name;
+      console.log(city);
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   const navigationView = () => (
+    // <View style={styles.sidebarContainer}>
+    //   <View style={{ flexDirection: 'row', marginBottom: 15, alignItems: 'center' }}>
+    //     <View style={{ flex: 0.15 }}>
+    //       <TouchableOpacity
+    //         onPress={() => drawer.current?.closeDrawer()}
+    //       >
+    //         <IconBack />
+    //       </TouchableOpacity>
+    //     </View>
+    //     <View style={{ flex: 0.7 }}>
+    //       <Text style={[customTextProps.style, { fontSize: 16, color: '#164863' }]}>
+    //         Manage Location
+    //       </Text>
+    //     </View>
+    //     <View style={{ flex: 0.15 }}>
+    //       <TouchableOpacity
+    //         onPress={() => drawer.current?.closeDrawer()}
+    //       >
+    //         <IconEdit />
+    //       </TouchableOpacity>
+    //     </View>
+    //   </View>
+
+    //   <View>
+    //     <TouchableOpacity>
+    //       <View style={styles.cityList}>
+    //         <Text>
+    //           Surabaya
+    //         </Text>
+    //         <Text>
+    //           {current.temp_c}°
+    //         </Text>
+    //       </View>
+    //     </TouchableOpacity>
+    //   </View>
+
+    //   <TouchableOpacity>
+    //     <View style={styles.addLocation}>
+    //       <Text style={{ color: "#117A8E" }}>
+    //         + Add Location
+    //       </Text>
+    //     </View>
+    //   </TouchableOpacity>
+    // </View>
+
     <View style={styles.sidebarContainer}>
-      <View style={{ flexDirection: 'row', marginBottom: 15 }}>
-        <View style={{ flex: 0.15 }}>
-          <Text style={{ color: "black" }}>
-            Icon
-          </Text>
+      <View style={{ borderWidth: 1, flexDirection: 'row', borderRadius: 20 }}>
+        <View style={{ flex: 0.15, borderWidth: 1 }}>
+          <IconSearch></IconSearch>
         </View>
-        <View style={{ flex: 0.7 }}>
-          <Text style={{ color: "black" }}>
-            Manage Location
-          </Text>
-        </View>
-        <View style={{ flex: 0.15 }}>
-          <Text style={{ color: "black" }}>
-            Icon
-          </Text>
-        </View>
+        <TextInput
+          style={{ height: 36, flex: 0.85 }}
+          placeholder='Search'
+          value={search}
+          onChangeText={value => setSearch(value)}
+          onSubmitEditing={() =>
+            searchCity(search)}
+        />
       </View>
-
-      <View>
-        <TouchableOpacity>
-          <View style={styles.cityList}>
-            <Text>
-              Surabaya
-            </Text>
-            <Text>
-              {current.temp_c}°
+      {listcity.map((city, index) => {
+        return (
+          <View style={{borderWidth: 1, padding: 10, marginTop: 15, borderRadius: 15}} key={index}>
+            <Text style={{ color: 'black' }}>
+              {city.name}, {city.country}
             </Text>
           </View>
-        </TouchableOpacity>
-        <TouchableOpacity>
-          <View style={styles.cityList}>
-            <Text>
-              Surabaya
-            </Text>
-            <Text>
-              {current.temp_c}°
-            </Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity>
-          <View style={styles.cityList}>
-            <Text>
-              Surabaya
-            </Text>
-            <Text>
-              {current.temp_c}°
-            </Text>
-          </View>
-        </TouchableOpacity>
-      </View>
-
-      <TouchableOpacity>
-        <View style={styles.addLocation}>
-          <Text style={{ color: "#117A8E" }}>
-            + Add Location
-          </Text>
-        </View>
-      </TouchableOpacity>
+        )
+      })}
     </View>
   );
 
   const getWeatherInfo = async () => {
-
-    const city = "Alaska"
+    const city = "Pamekasan"
     try {
       const response = await fetch(
         `http://api.weatherapi.com/v1/forecast.json?key=63065a5ed1bd4b09856193114242406&q=${city}&days=3&aqi=yes&alerts=no`,
@@ -148,6 +231,8 @@ const Home = () => {
         setCurrent(data.current);
         setLocation(data.location);
         setForecast(data.forecast.forecastday);
+        return data;
+
       } else {
         console.error('Response not OK', response.statusText);
       }
@@ -156,6 +241,7 @@ const Home = () => {
       console.error('Fetch error:', error);
     }
   };
+
 
   const getLocalTime = async () => {
     const date = location.localtime;
@@ -176,11 +262,16 @@ const Home = () => {
   useEffect(() => {
     const fetchData = async () => {
       isLoading(true);
-      await getWeatherInfo();
-      await getLocalTime();
-      await getHourlyData();
-      await calculateAQI();
-      isLoading(false);
+      try {
+        await getWeatherInfo();
+        await getLocalTime();
+        await getHourlyData();
+        await calculateAQI();
+      } catch (error) {
+
+      } finally {
+        isLoading(false);
+      }
     };
     fetchData();
   }, []);
@@ -188,6 +279,7 @@ const Home = () => {
   return (
     <DrawerLayoutAndroid
       ref={drawer}
+      drawerBackgroundColor={"#EEF7FF"}
       drawerWidth={300}
       renderNavigationView={navigationView}>
       <View style={styles.main}>
@@ -197,8 +289,7 @@ const Home = () => {
             style={{ width: 200, height: 200 }}
           />
         ) : (
-          <ScrollView showsVerticalScrollIndicator={false}>
-
+          <View>
             {/* Topbar */}
             <View style={styles.topBar}>
               <View style={[styles.cityContainer, { alignItems: 'flex-start', flex: 0.2 }]}>
@@ -212,237 +303,240 @@ const Home = () => {
               </View>
               <View style={styles.cityContainer}>
                 <Text style={[customTextProps.style, { fontSize: 20 }]}>{location.name}</Text>
+                <Text style={[customTextProps.style, { fontSize: 16 }]}>{localtime}</Text>
               </View>
               <View style={[styles.cityContainer, { flex: 0.2 }]} />
             </View>
+
             {/* Topbar */}
-
-            {/* main content */}
-            <View style={styles.container}>
-              <View>
-                <View style={styles.content}>
-                  <FastImage
-                    source={require("../assets/images/clear.gif")}
-                    style={styles.contentGif}
-                  />
-                </View>
-
-                <View style={{ flexWrap: "wrap" }}>
-                  <View style={{ flexWrap: "wrap" }}>
-                    <Text style={{ fontSize: 64, fontFamily: "Laila-SemiBold", color: "white", borderBottomWidth: 1, borderColor: "lightgrey" }}>
-                      {current.temp_c}°
-                    </Text>
-                  </View>
-
-
-                  <View>
-                    <Text style={[customTextProps.style, { marginTop: 15 }]}>
-                      {current.condition.text}
-                    </Text>
-                    <Text style={[customTextProps.style, { marginBottom: 15 }]}>
-                      Chance of rain: {forecast[0].day.daily_chance_of_rain}%
-                    </Text>
-                  </View>
-                </View>
-              </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
               {/* main content */}
-
-              {/* 2nd section */}
-              <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
-
-                {/* Today Card */}
-                <View style={{ width: 100, alignItems: "center", padding: 10, borderRadius: 20, backgroundColor: "#268696", marginRight: 15 }}>
-                  <Text>
-                    TODAY
-                  </Text>
-                  <View>
+              <View style={styles.container}>
+                <View>
+                  <View style={styles.content}>
                     <FastImage
-                      source={{ uri: `https:${current.condition.icon}` }}
-                      style={{ width: 60, height: 60 }}
+                      source={require("../assets/images/clear.gif")}
+                      style={styles.contentGif}
                     />
                   </View>
-                  <View style={{ alignItems: "center" }}>
-                    <Text>
-                      {current.temp_c}°
-                    </Text>
-                    <Text style={[customTextProps.style, { fontSize: 10 }]}>
-                      {current.condition.text}
-                    </Text>
+
+                  <View style={{ flexWrap: "wrap" }}>
+                    <View style={{ flexWrap: "wrap" }}>
+                      <Text style={{ fontSize: 64, fontFamily: "Laila-SemiBold", color: "white", borderBottomWidth: 1, borderColor: "lightgrey" }}>
+                        {current.temp_c}°
+                      </Text>
+                    </View>
+
+
+                    <View>
+                      <Text style={[customTextProps.style, { marginTop: 15 }]}>
+                        {current.condition.text}
+                      </Text>
+                      <Text style={[customTextProps.style, { marginBottom: 15 }]}>
+                        Chance of rain: {forecast[0].day.daily_chance_of_rain}%
+                      </Text>
+                    </View>
                   </View>
                 </View>
-                {/* Today Card */}
+                {/* main content */}
 
-                {/* 3-Day Forecast */}
-                <View style={{ width: 210, padding: 12, borderRadius: 20, backgroundColor: "#268696" }}>
-                  <Text>
-                    3-DAY FORECAST
-                  </Text>
+                {/* 2nd section */}
+                <View style={{ flexDirection: "row", justifyContent: "space-between" }}>
 
-                  <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
-                    <View style={styles.weatherCard}>
-                      <View style={{ alignItems: "center" }}>
-                        <FastImage
-                          source={{ uri: `https:${forecast[0].day.condition.icon}` }}
-                          style={styles.smallIcon}
-                        />
-                      </View>
-                      <View style={{ alignItems: "center" }}>
-                        <Text style={[customTextProps.style, { fontSize: 11 }]}>
-                          {forecast[0].day.avgtemp_c}°
-                        </Text>
-                        <Text style={[customTextProps.style, { fontSize: 8 }]}>
-                          {forecast[0].day.condition.text}
-                        </Text>
-                      </View>
+                  {/* Today Card */}
+                  <View style={{ width: 100, alignItems: "center", padding: 10, borderRadius: 20, backgroundColor: "#268696", marginRight: 15 }}>
+                    <Text>
+                      TODAY
+                    </Text>
+                    <View>
+                      <FastImage
+                        source={{ uri: `https:${current.condition.icon}` }}
+                        style={{ width: 60, height: 60 }}
+                      />
                     </View>
-
-                    <View style={styles.weatherCard}>
-                      <View style={{ alignItems: "center" }}>
-                        <FastImage
-                          source={{ uri: `https:${forecast[1].day.condition.icon}` }}
-                          style={{ width: 45, height: 45 }}
-                        />
-                      </View>
-                      <View style={{ alignItems: "center" }}>
-                        <Text style={[customTextProps.style, { fontSize: 11 }]}>
-                          {forecast[1].day.avgtemp_c}°
-                        </Text>
-                        <Text style={[customTextProps.style, { fontSize: 8 }]}>
-                          {forecast[1].day.condition.text}
-                        </Text>
-                      </View>
+                    <View style={{ alignItems: "center" }}>
+                      <Text>
+                        {current.temp_c}°
+                      </Text>
+                      <Text style={[customTextProps.style, { fontSize: 10 }]}>
+                        {current.condition.text}
+                      </Text>
                     </View>
+                  </View>
+                  {/* Today Card */}
 
-                    <View style={styles.weatherCard}>
-                      <View style={{ alignItems: "center" }}>
-                        <FastImage
-                          source={{ uri: `https:${forecast[2].day.condition.icon}` }}
-                          style={{ width: 45, height: 45 }}
-                        />
+                  {/* 3-Day Forecast */}
+                  <View style={{ width: 210, padding: 12, borderRadius: 20, backgroundColor: "#268696" }}>
+                    <Text>
+                      3-DAY FORECAST
+                    </Text>
+
+                    <ScrollView horizontal={true} showsHorizontalScrollIndicator={false} style={{ flexDirection: "row" }}>
+                      <View style={styles.weatherCard}>
+                        <View style={{ alignItems: "center" }}>
+                          <FastImage
+                            source={{ uri: `https:${forecast[0].day.condition.icon}` }}
+                            style={styles.smallIcon}
+                          />
+                        </View>
+                        <View style={{ alignItems: "center" }}>
+                          <Text style={[customTextProps.style, { fontSize: 11 }]}>
+                            {forecast[0].day.avgtemp_c}°
+                          </Text>
+                          <Text style={[customTextProps.style, { fontSize: 8 }]}>
+                            {forecast[0].day.condition.text}
+                          </Text>
+                        </View>
                       </View>
-                      <View style={{ alignItems: "center" }}>
-                        <Text style={[customTextProps.style, { fontSize: 11 }]}>
-                          {forecast[2].day.avgtemp_c}°
-                        </Text>
-                        <Text style={[customTextProps.style, { fontSize: 8 }]}>
-                          {forecast[2].day.condition.text}
-                        </Text>
+
+                      <View style={styles.weatherCard}>
+                        <View style={{ alignItems: "center" }}>
+                          <FastImage
+                            source={{ uri: `https:${forecast[1].day.condition.icon}` }}
+                            style={{ width: 45, height: 45 }}
+                          />
+                        </View>
+                        <View style={{ alignItems: "center" }}>
+                          <Text style={[customTextProps.style, { fontSize: 11 }]}>
+                            {forecast[1].day.avgtemp_c}°
+                          </Text>
+                          <Text style={[customTextProps.style, { fontSize: 8 }]}>
+                            {forecast[1].day.condition.text}
+                          </Text>
+                        </View>
                       </View>
+
+                      <View style={styles.weatherCard}>
+                        <View style={{ alignItems: "center" }}>
+                          <FastImage
+                            source={{ uri: `https:${forecast[2].day.condition.icon}` }}
+                            style={{ width: 45, height: 45 }}
+                          />
+                        </View>
+                        <View style={{ alignItems: "center" }}>
+                          <Text style={[customTextProps.style, { fontSize: 11 }]}>
+                            {forecast[2].day.avgtemp_c}°
+                          </Text>
+                          <Text style={[customTextProps.style, { fontSize: 8 }]}>
+                            {forecast[2].day.condition.text}
+                          </Text>
+                        </View>
+                      </View>
+                    </ScrollView>
+
+                  </View>
+                  {/* 3-Day Forecast */}
+
+                </View>
+                {/* 2nd section */}
+
+                {/* 3rd section */}
+                <View style={{ borderRadius: 15, backgroundColor: "#268696", marginTop: 20 }}>
+                  <View style={{ padding: 15 }}>
+                    <Text>
+                      Air Quality
+                    </Text>
+                    <View>
+                      <Text>
+                        {aqiStatus[0]} {aqi}
+                      </Text>
+                      <ProgressBar
+                        styleAttr="Horizontal"
+                        indeterminate={false}
+                        progress={aqiBar}
+                        color={aqiStatus[1]}
+                      />
+                    </View>
+                  </View>
+                </View>
+
+                <View style={{ marginTop: 20 }}>
+                  <View style={{ flexDirection: "row", justifyContent: 'space-between', marginBottom: 10 }}>
+                    <View style={styles.thirdContainer}>
+                      <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                        Feels like
+                      </Text>
+                      <Text>
+                        {current.feelslike_c}°
+                      </Text>
+                    </View>
+                    <View style={styles.thirdContainer}>
+                      <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                        UV
+                      </Text>
+                      <Text>
+                        {current.uv}
+
+                      </Text>
+                    </View>
+                    <View style={styles.thirdContainer}>
+                      <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                        Wind
+                      </Text>
+                      <Text>
+                        {current.wind_kph} kph
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: "row", justifyContent: 'space-between' }}>
+                    <View style={styles.thirdContainer}>
+                      <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                        Humidity
+                      </Text>
+                      <Text>
+                        {current.humidity}%
+                      </Text>
+                    </View>
+                    <View style={styles.thirdContainer}>
+                      <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                        Air Pressure
+                      </Text>
+                      <Text>
+                        {current.pressure_mb}
+                      </Text>
+                    </View>
+                    <View style={styles.thirdContainer}>
+                      <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
+                        Visibility
+                      </Text>
+                      <Text>
+                        {current.vis_km} km
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+                {/* 3rd section */}
+
+                {/* 4rd section */}
+                <View style={{ borderRadius: 15, backgroundColor: "#268696", marginTop: 20 }}>
+                  <ScrollView horizontal={true} showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+                      {forecast[0].hour
+                        .map((hour, index) => {
+                          return (
+                            <View style={{ flex: 0.3, padding: 15, alignItems: 'center' }} key={index}>
+                              <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 13 }}>
+                                {hourly[index]}
+                              </Text>
+                              <FastImage
+                                source={{ uri: `https:${hour.condition.icon}` }}
+                                style={{ width: 35, height: 35 }}
+                              />
+
+                              <Text style={[customTextProps.style, { marginLeft: 8 }]}>
+                                {hour.temp_c}°
+                              </Text>
+                            </View>
+                          )
+                        })}
                     </View>
                   </ScrollView>
-
                 </View>
-                {/* 3-Day Forecast */}
-
+                {/* 4rd section */}
               </View>
-              {/* 2nd section */}
-
-              {/* 3rd section */}
-              <View style={{ borderRadius: 15, backgroundColor: "#268696", marginTop: 20 }}>
-                <View style={{ padding: 15 }}>
-                  <Text>
-                    Air Quality
-                  </Text>
-                  <View>
-                    <Text>
-                      {aqiStatus[0]} {aqi}
-                    </Text>
-                    <ProgressBar
-                      styleAttr="Horizontal"
-                      indeterminate={false}
-                      progress={aqiBar}
-                      color={aqiStatus[1]}
-                    />
-                  </View>
-                </View>
-              </View>
-
-              <View style={{ marginTop: 20 }}>
-                <View style={{ flexDirection: "row", justifyContent: 'space-between', marginBottom: 10 }}>
-                  <View style={styles.thirdContainer}>
-                    <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
-                      Feels like
-                    </Text>
-                    <Text>
-                      {current.feelslike_c}°
-                    </Text>
-                  </View>
-                  <View style={styles.thirdContainer}>
-                    <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
-                      UV
-                    </Text>
-                    <Text>
-                      {current.uv}
-
-                    </Text>
-                  </View>
-                  <View style={styles.thirdContainer}>
-                    <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
-                      Wind
-                    </Text>
-                    <Text>
-                      {current.wind_kph} kph
-                    </Text>
-                  </View>
-                </View>
-                <View style={{ flexDirection: "row", justifyContent: 'space-between' }}>
-                  <View style={styles.thirdContainer}>
-                    <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
-                      Humidity
-                    </Text>
-                    <Text>
-                      {current.humidity}%
-                    </Text>
-                  </View>
-                  <View style={styles.thirdContainer}>
-                    <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
-                      Air Pressure
-                    </Text>
-                    <Text>
-                      {current.pressure_mb}
-                    </Text>
-                  </View>
-                  <View style={styles.thirdContainer}>
-                    <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 12 }}>
-                      Visibility
-                    </Text>
-                    <Text>
-                      {current.vis_km} km
-                    </Text>
-                  </View>
-                </View>
-              </View>
-              {/* 3rd section */}
-
-              {/* 4rd section */}
-              <View style={{ borderRadius: 15, backgroundColor: "#268696", marginTop: 20 }}>
-                <ScrollView horizontal={true} showsHorizontalScrollIndicator={false}>
-                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-                    {forecast[0].hour
-                      .map((hour, index) => {
-                        return (
-                          <View style={{ flex: 0.3, padding: 15, alignItems: 'center' }} key={index}>
-                            <Text style={{ fontFamily: "Laila-Regular", color: "white", fontSize: 13 }}>
-                              {hourly[index]}
-                            </Text>
-                            <FastImage
-                              source={{ uri: `https:${hour.condition.icon}` }}
-                              style={{ width: 35, height: 35 }}
-                            />
-
-                            <Text style={[customTextProps.style, { marginLeft: 8 }]}>
-                              {hour.temp_c}°
-                            </Text>
-                          </View>
-                        )
-                      })}
-                  </View>
-                </ScrollView>
-              </View>
-              {/* 4rd section */}
-            </View>
-            {/* content */}
-          </ScrollView>
+              {/* content */}
+            </ScrollView>
+          </View>
         )
         }
       </View >
@@ -476,9 +570,11 @@ const styles = StyleSheet.create({
     fontSize: 20
   },
   topBar: {
-    flex: 1,
     flexDirection: 'row',
     justifyContent: "space-between",
+    padding: 30,
+    paddingBottom: 12,
+    paddingTop: 12
   },
   content: {
     justifyContent: 'center',
@@ -506,7 +602,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#268696",
   },
   sidebarContainer: {
-    padding: 20
+    padding: 20,
   },
   cityList: {
     padding: 10,
